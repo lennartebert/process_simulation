@@ -223,7 +223,7 @@ class ExtendedProcessSimulation:
     
     def run_experiments(self, record_am=[0, 100, 500, 1000], number_runs=30):
         experiments_results = []
-        for experiment in range(number_experiments):
+        for experiment in range(number_runs):
             sim_result = self.run_simulation(record_am)
             experiments_results.append(sim_result)
         
@@ -233,7 +233,7 @@ class ExtendedProcessSimulation:
             result_summary = summarize_sim_results(experiment_results)
             results_dfs.append(result_summary)
         
-        combined_dfs = pd.concat(results_dfs)
+        combined_dfs = pd.concat(results_dfs, keys=range(number_runs), names=['run', 'time'])
         return combined_dfs
         
     
