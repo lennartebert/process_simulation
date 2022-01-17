@@ -221,6 +221,11 @@ class ExtendedProcessSimulation:
 
         return results
     
+    def run_experiment(self, record_am=[0, 100, 500, 1000]):
+        sim_result = self.run_simulation(record_am)
+        result_summary = summarize_sim_results(sim_result)
+        return result_summary
+    
     def run_experiments(self, record_am=[0, 100, 500, 1000], number_runs=30):
         experiments_results = []
         for experiment in range(number_runs):
@@ -235,6 +240,22 @@ class ExtendedProcessSimulation:
         
         combined_dfs = pd.concat(results_dfs, keys=range(number_runs), names=['run', 'time'])
         return combined_dfs
+    
+    def get_settings(self):
+        """Returns the simulation settings as a dictionary"""
+        settings_dict = {}
+        settings_dict['n'] = self.n
+        settings_dict['l'] = self.l
+        settings_dict['m'] = self.m
+        settings_dict['r'] = self.r
+        settings_dict['a'] = self.a
+        settings_dict['v_h'] = self.v_h
+        settings_dict['v_a'] = self.v_a
+        settings_dict['v_h_i'] = self.v_h_i
+        settings_dict['v_a_i'] = self.v_a_i
+        settings_dict['i'] = self.i
+        settings_dict['max_sequence'] = self.max_sequence
+        return settings_dict
         
     
 def summarize_sim_results(adjacency_matrices):
