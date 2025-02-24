@@ -1,0 +1,78 @@
+         8593232 function calls (8583232 primitive calls) in 5.240 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    0.000    0.000    5.240    2.620 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\IPython\core\interactiveshell.py:3472(run_code)
+        2    0.000    0.000    5.240    2.620 {built-in method builtins.exec}
+        1    0.054    0.054    5.240    5.240 C:\Users\Lennart Ebert\AppData\Local\Temp\ipykernel_39584\2671428621.py:13(<module>)
+        1    0.317    0.317    5.186    5.186 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:132(run_simulation)
+     5000    0.834    0.000    4.432    0.001 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:92(next_sequence)
+921943/911943    0.619    0.000    3.119    0.000 {built-in method numpy.core._multiarray_umath.implement_array_function}
+   300816    0.129    0.000    1.360    0.000 <__array_function__ internals>:177(sum)
+   300816    0.241    0.000    1.083    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:2188(sum)
+   300564    0.122    0.000    0.946    0.000 <__array_function__ internals>:177(cumsum)
+   601128    0.191    0.000    0.945    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:51(_wrapfunc)
+   300564    0.121    0.000    0.891    0.000 <__array_function__ internals>:177(searchsorted)
+   300816    0.255    0.000    0.799    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:69(_wrapreduction)
+   300564    0.136    0.000    0.683    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:2523(cumsum)
+   300564    0.121    0.000    0.519    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:1345(searchsorted)
+   305816    0.481    0.000    0.481    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+   300564    0.411    0.000    0.411    0.000 {method 'cumsum' of 'numpy.ndarray' objects}
+   300564    0.266    0.000    0.266    0.000 {method 'searchsorted' of 'numpy.ndarray' objects}
+   607695    0.220    0.000    0.220    0.000 {method 'rand' of 'numpy.random.mtrand.RandomState' objects}
+     4999    0.003    0.000    0.209    0.000 <__array_function__ internals>:177(copy)
+     4999    0.003    0.000    0.202    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\lib\function_base.py:871(copy)
+     4999    0.199    0.000    0.199    0.000 {built-in method numpy.array}
+     5000    0.002    0.000    0.177    0.000 <__array_function__ internals>:177(zeros_like)
+     5000    0.006    0.000    0.172    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\numeric.py:77(zeros_like)
+     5000    0.002    0.000    0.141    0.000 <__array_function__ internals>:177(copyto)
+   302130    0.111    0.000    0.111    0.000 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:86(get_v)
+   300816    0.079    0.000    0.079    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:70(<dictcomp>)
+   601132    0.078    0.000    0.078    0.000 {built-in method builtins.getattr}
+     5000    0.003    0.000    0.049    0.000 {method 'sum' of 'numpy.ndarray' objects}
+     5000    0.001    0.000    0.046    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\_methods.py:47(_sum)
+   300830    0.042    0.000    0.042    0.000 {built-in method builtins.isinstance}
+   337130    0.039    0.000    0.039    0.000 {method 'append' of 'list' objects}
+   300564    0.030    0.000    0.030    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:1341(_searchsorted_dispatcher)
+   300816    0.029    0.000    0.029    0.000 {method 'items' of 'dict' objects}
+   323696    0.029    0.000    0.029    0.000 {built-in method builtins.len}
+   300816    0.029    0.000    0.029    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:2183(_sum_dispatcher)
+   300564    0.028    0.000    0.028    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\fromnumeric.py:2519(_cumsum_dispatcher)
+     5000    0.002    0.000    0.024    0.000 <__array_function__ internals>:177(empty_like)
+     1566    0.002    0.000    0.004    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\random.py:285(choice)
+     1566    0.002    0.000    0.003    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\random.py:250(_randbelow_with_getrandbits)
+     5001    0.002    0.000    0.002    0.000 {built-in method numpy.zeros}
+     4999    0.001    0.000    0.001    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\lib\function_base.py:867(_copy_dispatcher)
+     2473    0.001    0.000    0.001    0.000 {method 'getrandbits' of '_random.Random' objects}
+     5000    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\multiarray.py:1079(copyto)
+     5000    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\numeric.py:73(_zeros_like_dispatcher)
+     1566    0.000    0.000    0.000    0.000 {method 'bit_length' of 'int' objects}
+     5000    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\numpy\core\multiarray.py:84(empty_like)
+       14    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\ipykernel\ipkernel.py:775(_clean_thread_parent_frames)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\codeop.py:142(__call__)
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.compile}
+        7    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\ipykernel\ipkernel.py:790(<setcomp>)
+        7    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\threading.py:1336(enumerate)
+       42    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\threading.py:1047(ident)
+        1    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:136(<listcomp>)
+        1    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:144(<dictcomp>)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\contextlib.py:238(helper)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\traitlets\traitlets.py:676(__get__)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\contextlib.py:82(__init__)
+        1    0.000    0.000    0.000    0.000 C:\Users\Lennart Ebert\AppData\Local\Temp\ipykernel_39584\2671428621.py:16(<module>)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\contextlib.py:108(__enter__)
+        4    0.000    0.000    0.000    0.000 {built-in method builtins.next}
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\traitlets\traitlets.py:629(get)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\contextlib.py:117(__exit__)
+        4    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\IPython\core\compilerop.py:180(extra_flags)
+        1    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:146(<dictcomp>)
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\IPython\core\interactiveshell.py:3424(compare)
+       28    0.000    0.000    0.000    0.000 {method 'keys' of 'dict' objects}
+        1    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\OneDrive - McKinsey & Company\Documents\04_phd\02_workspace\upc_csn_08_final_project\process_simulation.py:142(<listcomp>)
+       14    0.000    0.000    0.000    0.000 {method 'values' of 'dict' objects}
+        2    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\site-packages\IPython\core\interactiveshell.py:1229(user_global_ns)
+        4    0.000    0.000    0.000    0.000 c:\Users\Lennart Ebert\.conda\envs\process_simulation\lib\typing.py:1149(cast)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+
+

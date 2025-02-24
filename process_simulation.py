@@ -4,24 +4,59 @@
 import numpy as np
 import networkx as nx
 import pandas as pd
+import random
 
-class ProcessSimulationPentland:
-    def __init__(self, n=1000, l=100, m=1, r=50, v=0.1, max_sequence=100*10):
+VERSION = 0.01
+
+def sample_adjacency_matrices(ams, sample_size):
+    # retrieves "sample_size" items from ams
+    n = len(ams)
+    if sample_size > n:
+        raise ValueError("sample_size cannot be greater than the number of entries in ams")
+
+    # Ensure first and last entries are included
+    indices = [0]  # Start with the first index
+
+    # Calculate the step size
+    if sample_size > 2:
+        step_size = (n - 1) / (sample_size - 1)
+        for i in range(1, sample_size - 1):
+            indices.append(round(i * step_size))
+    
+    indices.append(n-1)  # End with the last index
+    
+    # Remove duplicates if any (this can happen if rounding causes duplicates)
+    indices = sorted(set(indices))
+
+    # Retrieve the corresponding entries from the dictionary
+    samples = {index: ams[index] for index in indices}
+
+    return samples
+
+class ProcessSimulationModel:
+    def __init__(self, t, l, m, r, n, v_m, v_a=0, v_m_e=0.01, v_a_e=0.03, a=0, e=0):
         """
         TODO add Docstring
         params:
-            n: number of time steps
+            t: number of time steps
             l: lexicon: number of different process steps
             m: number of subunits of the process, needs to be a factor of l
             r: size of the history matrix
             v: chance of variation
+            n: maximal sequence length factor (max. sequence length is n * l)
         """
-        self.n = n
+        self.t = t
         self.l = l
         self.m = m
         self.r = r
-        self.v = v
-        self.max_sequence = max_sequence
+        self.n = n
+        self.max_sequence_length = n * l
+        self.a = a
+        self.e = e
+        self.v_m = v_m
+        self.v_a = v_a
+        self.v_m_e = v_m_e
+        self.v_a_e = v_a_e
     
     # get the adjecency matrix for the the last r rows in the sequence history
     def get_adjacency_matrix(self, historic_sequences):
@@ -48,9 +83,59 @@ class ProcessSimulationPentland:
 
         return norm_am
 
-    def next_sequence(self, am):
+    def get_v(self, activitiy, is_activity_automated, is_exception):
+        if (is_activity_automated[activitiy]) and (is_exception): return self.v_a_e
+        elif (is_activity_automated[activitiy]) and (not is_exception): return self.v_a
+        elif (not is_activity_automated[activitiy]) and (is_exception): return self.v_m_e
+        elif (not is_activity_automated[activitiy]) and (not is_exception): return self.v_m
+
+    def next_sequence(self, am, global_source, global_sink, module_sinks, activity_modules, module_activities, is_activity_automated):
         """ Perform another iteration of the simulation. Return the sequence.
         """
+        current_activity = global_source
+        sequence = [current_activity]
+
+        is_exception = self.e > np.random.rand()
+
+        while (current_activity != global_sink) and (len(sequence) < self.max_sequence_length):
+            # if the current activity is a module sink, the next activity is surely the current activity + 1
+            if current_activity in module_sinks:
+                next_activity = current_activity + 1
+            # do not vary from usual process if a random number is > variability
+            elif np.random.rand() > self.get_v(current_activity, is_activity_automated, is_exception):
+                # go to the next node
+                # get possible next nodes from the am
+                next_node_occurences = am[current_activity,]
+                sum_next_node_occurences = np.sum(next_node_occurences)
+                
+                # if the sum of the next node occurences is 0, perform a random jump in the module (in accordance with Pentlands implementation)
+                if sum_next_node_occurences == 0:
+                    current_module = activity_modules[current_activity]
+                    next_activity = random.choice(module_activities[current_module])
+                # else, select the next node per weighted jump
+                else:
+                    # custom implementation of random.choice to pick next activity based on non-normalized values
+                    cumulative_occurences = np.cumsum(next_node_occurences)
+                    random_value = np.random.rand() * sum_next_node_occurences
+                    next_activity = np.searchsorted(cumulative_occurences, random_value)
+
+            # otherwise, put in a variation within the module
+            else:
+                current_module = activity_modules[current_activity]
+                next_activity = random.choice(module_activities[current_module])
+
+            current_activity = next_activity
+            sequence.append(current_activity)
+
+        return sequence
+    
+    def run_simulation(self, normalize_adjacency_matrices=True):
+        # simulate each time step
+        historic_adjacency_matrices = []
+        # historic_sequences_incl_init = [list(range(self.l))*(_+1) for _ in range(self.r)] # code for testing a unique sequence for initialization 
+        historic_sequences_incl_init = [list(range(self.l)) for _ in range(self.r)]
+
+        # initialize global variables
         global_source = 0
         global_sink = self.l - 1
 
@@ -59,245 +144,138 @@ class ProcessSimulationPentland:
         activity_modules = {activity: module_sinks[int(self.m * activity / self.l)] for activity in range(0, self.l)}
         # create a dictionary that has all activities of a specific module
         module_activities = {sink_node: list(range(int(sink_node-self.l/self.m+1), sink_node+1)) for sink_node in module_sinks}
-                
-        current_activity = global_source
-        sequence = []
+        
+        # create dictionary that holds which activities are automated
+        is_activity_automated = np.random.rand(self.l) < self.a
 
-        while (current_activity != global_sink) and len(sequence) < self.max_sequence-1:
-            sequence.append(current_activity)
+        for i in range(self.t):
+            # build adjacency matrix
+            am = None
 
-            # if the current activity is a module sink, the next activity is surely the current activity + 1
-            if current_activity in module_sinks:
-                next_activity = current_activity + 1
-            # do not vary from usual process if a random number is > v
-            elif np.random.rand() > self.v:
-                # go to the next node
-                # get possible next nodes from the am
-                next_node_probabilities = am[current_activity,]
-                
-                # if the sum of the next node probabilities is 0, got to global sink
-                if sum(next_node_probabilities) == 0: break
-                
-                next_activity = np.random.choice(list(range(self.l)), 1,
-                                                 p=next_node_probabilities)[0]
-            # otherwise, put in a variation within the module
+
+            # special case if r=0 - no variation
+            if self.r == 0:
+                # adjacency matrix is always the same happy path
+                if i == 0:
+                    am = np.zeros((self.l, self.l))
+                    for activity in range(self.l-1):
+                        am[activity][activity+1] = 1
+                else: am = np.copy(historic_adjacency_matrices[-1])
+            elif i == 0:
+                # initialize the adjacency matrix with the happy path
+                am = np.zeros((self.l, self.l))
+                # for activity in range(self.l-1):
+                #     am[activity][activity+1] = self.r
+                for sequence in historic_sequences_incl_init:
+                    for index, activity_from in enumerate(sequence[:-1]):
+                        activity_to = sequence[index+1]
+                        am[activity_from][activity_to] += 1
             else:
-                current_module = activity_modules[current_activity]
-                next_activity = np.random.choice(module_activities[current_module], 1)[0]
-            
-            current_activity = next_activity
+                # get the last adjacency matrix
+                am = np.copy(historic_adjacency_matrices[-1])
 
-        sequence.append(global_sink)
-
-        return sequence
-
-    def run_simulation(self, record_am=[0, 100, 500, 1000]):
-        # initialize the historic sequences with the happy path
-        historic_sequences = [list(range(0, self.l)) for sequence in range(0, max(1, self.r))]
-        
-        results = {}
-        for time in range(self.n + 1):
-            am = self.get_adjacency_matrix(historic_sequences)
-            if time in record_am:
-                results[time] = am
-            
-            new_sequence = self.next_sequence(am)
-            historic_sequences.append(new_sequence)
-        
-        return results
-    
-class ExtendedProcessSimulation:
-    def __init__(self, n=1000, l=100, m=1, r=50, a=0.3, v_h=0.05, v_a=0.001, v_h_i=None, v_a_i=None, i=0, max_sequence=100*10):
-        """
-        TODO add Docstring
-        params:
-            n: number of time steps
-            l: lexicon: number of different process steps
-            m: number of subunits of the process, needs to be a factor of l
-            r: size of the history matrix
-            a: percentage of activities that are automated
-            v_h: chance of variation for a human actor
-            v_a: chance of variation for automated activities
-            v_h_i: chance of variation for a human actor for a non-standard process input
-            v_a_i: chance of variation for an automated activity for a non-standard process input
-            i: chance of non-standard process input
-        """
-        self.n = n
-        self.l = l
-        self.m = m
-        self.r = r
-        self.a = a
-        self.v_h = v_h
-        self.v_a = v_a
-        if v_h_i is None: v_h_i = v_h
-        self.v_h_i = v_h_i
-        if v_a_i is None: v_a_i = v_a
-        self.v_a_i = v_a_i        
-        self.i = i
-        self.max_sequence = max_sequence
-    
-    # get the adjecency matrix for the the last r rows in the sequence history
-    def get_adjacency_matrix(self, historic_sequences):
-        am = np.zeros((self.l, self.l))
-
-        # create the new adjacency matrix by adding all transitions observed in the sequence window
-        # get past r observations (rows) in the historic sequences matrix
-        window_sequences = historic_sequences[-self.r:]
-        
-        for sequence in window_sequences:
-            for sequence_position, activity in enumerate(sequence):
-                if sequence_position + 1 >= len(sequence): break  # stop if the last activity is reached
-                am[activity, sequence[sequence_position + 1]] += 1
-        
-        # normalize the adjacency matrix by rows
-        sum_of_rows = am.sum(axis=1)
-        sum_of_rows_matrix = sum_of_rows[:, np.newaxis]
-        norm_am = np.divide(am, sum_of_rows_matrix, out=np.zeros_like(am), where=sum_of_rows_matrix != 0)
-
-        return norm_am
-
-    def next_sequence(self, am, automated_activities):
-        """ Perform another iteration of the simulation. Return the sequence.
-        """
-        global_source = 0
-        global_sink = self.l - 1
-
-        module_sinks = [int(self.l / self.m * sink) - 1 for sink in range(1, self.m)]
-        
-        is_non_standard = self.i > np.random.rand()        
-        
-        current_activity = global_source
-        sequence = []
-
-        while (current_activity != global_sink) and len(sequence) < self.max_sequence:
-            sequence.append(current_activity)
-
-            # if the current activity is a module sink, the next activity is surely the current activity + 1
-            if current_activity in module_sinks:
-                next_activity = current_activity + 1
-            # do not vary from usual process if a random number is > v_h when activity is not 
-            # automated or > v_a when activitiy is automated
-            elif ((current_activity not in automated_activities and not is_non_standard and np.random.rand() > self.v_h) or
-                  (current_activity not in automated_activities and is_non_standard and np.random.rand() > self.v_h_i) or
-                  (current_activity in automated_activities and not is_non_standard and np.random.rand() > self.v_a) or
-                  (current_activity in automated_activities and is_non_standard and np.random.rand() > self.v_a_i)):
+                # forget sequence that is now out of the retention window
+                sequence_to_forget = historic_sequences_incl_init[-self.r-1]
+                # remove the sequence
+                for index, activity_from in enumerate(sequence_to_forget[:-1]):
+                    activity_to = sequence_to_forget[index+1]
+                    am[activity_from][activity_to] -= 1
                 
-                # go to the next node without variation
-                # get possible next nodes from the am
-                next_node_probabilities = am[current_activity,]
-                
-                # if the sum of the next node probabilities is 0, go to global sink
-                if sum(next_node_probabilities) == 0: break
-                
-                next_activity = np.random.choice(list(range(self.l)), 1,
-                                                 p=next_node_probabilities)[0]
-            # otherwise, put in a variation
-            else:
-                next_activity = int(np.random.rand() * self.l)
+                # add last sequence to matrix
+                last_sequence = historic_sequences_incl_init[-1]
+                for index, activity_from in enumerate(last_sequence[:-1]):
+                    activity_to = last_sequence[index+1]
+                    am[activity_from][activity_to] += 1
 
-            current_activity = next_activity
+            # get next sequence based on adjacency matrix
+            next_sequence = self.next_sequence(am, global_source, global_sink, module_sinks, activity_modules, module_activities, is_activity_automated)
 
-        sequence.append(global_sink)
+            # write the historic data
+            historic_sequences_incl_init.append(next_sequence)
+            historic_adjacency_matrices.append(am)
 
-        return sequence
-
-    def run_simulation(self, record_am=[0, 100, 500, 1000]):
-        node_list = list(range(0, self.l))
+            # integrity check: are only past r sequences in history matrix? identify by occurence counts
+            # optional code for debugging
+            # last_am = historic_adjacency_matrices[-1]
+            # total_occurences_in_am = np.sum(last_am)
+            # relevant_historic_sequences = historic_sequences_incl_init[-self.r-1:-1]
+            # total_occurences_in_last_r_iters = sum([len(sequence)-1 for sequence in relevant_historic_sequences])
+            # if (total_occurences_in_last_r_iters != total_occurences_in_am): raise Exception("AM not in line with past occurences")
         
-        # get the automated activities
-        automated_activities = np.random.choice(node_list, int(len(node_list)*self.a))
-        
-        # initialize the historic sequences with the happy path
-        historic_sequences = [node_list for sequence in range(0, self.r)]
-        
-        results = {}
-        for time in range(self.n + 1):
-            am = self.get_adjacency_matrix(historic_sequences)
-            if time in record_am:
-                results[time] = am
-            
-            new_sequence = self.next_sequence(am, automated_activities)
-            historic_sequences.append(new_sequence)
+        sim_result = historic_adjacency_matrices
 
-        return results
+        if normalize_adjacency_matrices:
+            # calculate the nomarlized adjacency matrixes for report out
+            norm_adjacency_matrices = []
+            for am in historic_adjacency_matrices:
+                # normalize the adjacency matrix by rows
+                sum_of_rows = am.sum(axis=1)
+                sum_of_rows_matrix = sum_of_rows[:, np.newaxis]
+                norm_am = np.divide(am, sum_of_rows_matrix, out=np.zeros_like(am), where=sum_of_rows_matrix != 0)
+                norm_adjacency_matrices.append(norm_am)
+            sim_result = norm_adjacency_matrices
+        
+        return sim_result
     
-    def run_experiment(self, record_am=[0, 100, 500, 1000]):
-        sim_result = self.run_simulation(record_am)
-        result_summary = summarize_sim_results(sim_result)
-        return result_summary
-    
-    def run_experiments(self, record_am=[0, 100, 500, 1000], number_runs=30):
-        experiments_results = []
-        for experiment in range(number_runs):
-            sim_result = self.run_simulation(record_am)
-            experiments_results.append(sim_result)
-        
-        # convert all to pandas dataframes
-        results_dfs = []
-        for experiment_results in experiments_results:
-            result_summary = summarize_sim_results(experiment_results)
-            results_dfs.append(result_summary)
-        
-        combined_dfs = pd.concat(results_dfs, keys=range(number_runs), names=['run', 'time'])
-        return combined_dfs
-    
-    def get_settings(self):
-        """Returns the simulation settings as a dictionary"""
-        settings_dict = {}
-        settings_dict['n'] = self.n
-        settings_dict['l'] = self.l
-        settings_dict['m'] = self.m
-        settings_dict['r'] = self.r
-        settings_dict['a'] = self.a
-        settings_dict['v_h'] = self.v_h
-        settings_dict['v_a'] = self.v_a
-        settings_dict['v_h_i'] = self.v_h_i
-        settings_dict['v_a_i'] = self.v_a_i
-        settings_dict['i'] = self.i
-        settings_dict['max_sequence'] = self.max_sequence
-        return settings_dict
-        
-    
-def summarize_sim_results(adjacency_matrices):
-    results = {}
+def get_number_of_connected_nodes(graph):
+    number_of_connected_nodes = 0
+    for node, degree in graph.degree():
+        if degree > 0:
+            number_of_connected_nodes += 1
+    return number_of_connected_nodes
 
-    for time, adjacency_matrix in adjacency_matrices.items():
-        result = {}
+def summarize_am(adjacency_matrix, metrics=['number of connected nodes', 'number of edges', 'density', 'avg degree', 'est. count simple paths'], monte_carlo_max_sequence=None, monte_carlo_iterations = 1000):
+    result = {}
 
-        # get the graph object
-        graph = nx.from_numpy_matrix(adjacency_matrix)
+    # get the graph object
+    graph = nx.from_numpy_array(adjacency_matrix)
 
-        # calculate basic graph metrics
-        number_of_nodes = graph.number_of_nodes() # this will always be l
+    # always get number of nodes and edges
+    number_of_nodes = graph.number_of_nodes()
+    number_of_edges = graph.number_of_edges()
+
+    # calculate basic graph metrics
+    if 'number of nodes' in metrics:
         result['number of nodes'] = number_of_nodes
-        
-        number_of_connected_nodes = 0
-        for node, degree in graph.degree():
-            if degree > 0:
-                number_of_connected_nodes += 1
-        result['number of connected nodes'] = number_of_connected_nodes
+    
+    if 'number of connected nodes' in metrics:
+        result['number of connected nodes'] = get_number_of_connected_nodes(graph)
 
-        number_of_edges = graph.number_of_edges()
+    if 'number of edges' in metrics:
         result['number of edges'] = number_of_edges
 
+    if 'avg degree' in metrics:
+        number_of_connected_nodes = None
+        if 'number_of_connected_nodes' in result:
+            number_of_connected_nodes = result['number_of_connected_nodes']
+        else:
+            number_of_connected_nodes = get_number_of_connected_nodes(graph)
+
         average_degree  = number_of_edges / number_of_connected_nodes
-        result['average degree'] = average_degree
-        
-        # control flow complexity
-        # consider each node with degree > 1 as a node with a choice
-        # note that this is not consistent with the implementation by Mendling 2008
+        result['avg degree'] = average_degree
+    
+    # control flow complexity
+    # consider each node with degree > 1 as a node with a choice
+    # note that this is not consistent with the implementation by Mendling 2008
+    if 'control flow complexity' in metrics:
         choices = 0
         for node, degree in graph.degree():
             if degree > 1:
                 choices += 1
         control_flow_complexity = choices
         result['control flow complexity'] = control_flow_complexity
-        
-        # cyclicity
-        # Ratio of activities on a cycle
-        # use networkx.algorithms.cycles.find_cycle to find a cycle starting at node_i
-        # whenever a cycle is found, we know that all other nodes on the cycle are also on a cycle
-        
+    
+    # cyclicity
+    # Ratio of activities on a cycle
+    # use networkx.algorithms.cycles.find_cycle to find a cycle starting at node_i
+    # whenever a cycle is found, we know that all other nodes on the cycle are also on a cycle
+    if 'cyclicity' in metrics:
+        number_of_connected_nodes = None
+        if 'number_of_connected_nodes' in result:
+            number_of_connected_nodes = result['number_of_connected_nodes']
+        else:
+            number_of_connected_nodes = get_number_of_connected_nodes(graph)
+
         number_nodes_on_cycle = 0
         node_cycle_candidates = list(graph)
         nodes_on_cycle = set()
@@ -315,34 +293,163 @@ def summarize_sim_results(adjacency_matrices):
                 node_cycle_candidates.pop()
                 
         cyclicity = len(nodes_on_cycle) / number_of_connected_nodes
-        
-        # cyclomatic number
-        edges_for_sequential_order = number_of_connected_nodes - 1
-        cyclomatic_number = number_of_edges - edges_for_sequential_order
-        
-        # depth
+        result['cyclicity'] = cyclicity
+
+    
+    # depth
+    if 'depth' in metrics:
         depth = len(nx.algorithms.shortest_paths.generic.shortest_path(graph, source=min(list(graph)), target=max(list(graph))))
         result['depth'] = depth
+    
+    # density
+    if 'density' in metrics:
+        number_of_connected_nodes = None
+        if 'number_of_connected_nodes' in result:
+            number_of_connected_nodes = result['number_of_connected_nodes']
+        else:
+            number_of_connected_nodes = get_number_of_connected_nodes(graph)
         
-        # density
         density = number_of_edges / (number_of_connected_nodes * (number_of_connected_nodes-1))
         result['density'] = density
-        
-        # number s-s-paths
-        # implementation by Pentland et al. 2020
-        est_count_s_s_paths = 10**(0.08 + 0.08 * number_of_edges - 0.08 * number_of_connected_nodes)
-        result['est. count shortest simple paths'] = est_count_s_s_paths
-        
-        # calculate the sum of all shortest simple paths
-        # shortest_simple_paths = nx.shortest_simple_paths(graph, 0, max(graph.nodes))
-        # number_shortest_simple_paths = len(list(shortest_simple_paths))
-        # result['number_shortest_simple_paths'] = number_shortest_simple_paths
+    
+    # number of shortest simple paths
+    # implementation by Pentland et al. 2020
+    
+    if 'est. count simple paths' in metrics:
+        est_count_s_paths = 10**(0.08 + 0.08 * number_of_edges - 0.08 * number_of_nodes) 
+        result['est. count simple paths'] = est_count_s_paths
 
-        results[time] = result
+    if 'count simple paths' in metrics:
+        all_simple_paths = list(nx.all_simple_paths(graph, source=0, target=number_of_nodes-1))
+        count_simple_paths = len(all_simple_paths)
+        result['count simple paths'] = count_simple_paths
+        
+    # calculate probabilistic metrics by performing monte carlo runs through the adjacency matrix and then count the averages
+
+    # perform monte_carlo_count monte carlo runs through the adjacency matrix (source to sink with cut-off)
+    
+    if ('avg sequences ending in sink' in metrics) or ('avg sequences with loops' in metrics) or ('avg steps to sink' in metrics):
+        monte_carlo_sequences = []
+
+        for _ in range(monte_carlo_iterations):
+            monte_carlo_sequences.append(get_random_walk_sequence(adjacency_matrix, max_sequence))
+        
+        # Average number of sequences ending in sink
+        if 'avg sequences ending in sink' in metrics:
+            sequence_count_ending_in_sink = 0
+            for sequence in monte_carlo_sequences:
+                if (sequence[len(sequence) - 1]) == (len(adjacency_matrix) - 1): sequence_count_ending_in_sink += 1
+
+            result['avg sequences ending in sink'] = sequence_count_ending_in_sink / monte_carlo_iterations
+
+        # average number of sequences with loops (defined as recurring activities in sequences)
+        if 'avg sequences with loops' in metrics:
+            sequence_count_loop = 0
+            for sequence in monte_carlo_sequences:
+                if len(sequence) != len(set(sequence)): sequence_count_loop += 1
+
+            result['avg sequences with loops'] = sequence_count_loop / monte_carlo_iterations
+
+        # average number of steps to sink
+        if 'avg steps to sink' in metrics:
+            steps_to_sink = 0
+            for sequence in monte_carlo_sequences:
+                steps_to_sink += len(sequence)
+
+            result['avg steps to sink'] = steps_to_sink / monte_carlo_iterations
+        
+    return result
+
+def get_aggregate_sim_result(adjacency_matrices, l):
+    complexities = []
+    max_complexity = None
+
+    # estimate complexity based on edge counts
+    for adjacency_matrix in adjacency_matrices:
+        edges = np.count_nonzero(adjacency_matrix)
+        est_count_s_paths = 10**(0.08 + 0.08 * edges - 0.08 * l) 
+        complexity = est_count_s_paths
+        if (max_complexity is None) or (complexity > max_complexity):
+            max_complexity = complexity
+        complexities.append(complexity)
+    
+    # evaluate whether there has been a phase change
+
+    # criteria 1: a peak of 3 orders of magnitude of the average complexity
+    # criteria 2: did the complexity after the last peak reduce below the level before the first peak
+    
+    has_phase_change = False
+
+    # Step 1: Calculate the mean of the array
+    mean_complexity = np.mean(complexities)
+
+    # Step 2: Find the indices where the value is greater than 3 times the mean
+    threshold = 3 * mean_complexity
+    indices = np.where(complexities > threshold)[0]
+
+    criteria_1 = len(indices) > 0
+
+    if criteria_1:
+        mean_complexity_before_first_peak = np.mean(complexities[:indices[0]])
+        mean_complexity_after_last_peak = np.mean(complexities[indices[-1]:])
+        criteria_2 = mean_complexity_after_last_peak < mean_complexity_before_first_peak
+        if criteria_2:
+            has_phase_change = True
+    
+    time_to_complexity = indices[0] if len(indices)>0 else None
+
+    return {'max_complexity': max_complexity, 'mean_complexity': mean_complexity, 'has_phase_change': has_phase_change, 'time_to_complexity': time_to_complexity}
+
+def get_metrics_for_sim_results(adjacency_matrices, metrics=['number of connected nodes', 'number of edges', 'density', 'avg degree', 'est. count simple paths'], monte_carlo_max_sequence=None, monte_carlo_iterations = 1000):
+    results = []
+
+    for adjacency_matrix in adjacency_matrices:
+        am_summary = summarize_am(adjacency_matrix, metrics, monte_carlo_max_sequence, monte_carlo_iterations)
+        results.append(am_summary)
 
     # create a pandas dictionary from the results, format the dataframe here
-    results_df = pd.DataFrame.from_dict(results)
-    results_df = results_df.transpose()
+    results_df = pd.DataFrame(results)
+    # results_df = results_df.transpose()
     results_df.index.rename('time', inplace=True)
     
     return results_df
+
+def get_random_walk_sequence(am, max_sequence=None):
+        """ Perform a random walk through the given adjacency matrix, always starting at global source
+        """
+        # derive l from adjacency matrix
+        num_rows, num_cols = am.shape
+        if num_rows != num_cols: raise Exception("Adjacency matrix not symmetrical")
+        l = num_rows
+
+        # set max_sequence if None
+        if max_sequence is None: max_sequence = 5 * num_rows
+
+        global_source = 0
+        
+        # set current activity to global source
+        current_activity = global_source
+        
+        # initialize sequence with global source
+        sequence = [current_activity]
+
+        # break criteria for while loop: no next nodes
+        no_next_node = False
+
+        while len(sequence) < max_sequence and (not no_next_node):
+            # go to the next node
+
+            # get possible next nodes from the am
+            next_node_probabilities = am[current_activity,]
+            
+            # if the sum of the next node probabilities is 0, set no next node to break the while loop
+            if sum(next_node_probabilities) == 0: 
+                no_next_node=True
+            else:
+                next_activity = np.random.choice(list(range(l)), 1,
+                                                    p=next_node_probabilities)[0]
+                
+                current_activity = next_activity
+                sequence.append(current_activity)
+
+        return sequence

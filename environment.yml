@@ -1,0 +1,14 @@
+name: process_simulation
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - scikit-learn
+  - networkx
+  - jupyter
+  - ipykernel
+  - tqdm
