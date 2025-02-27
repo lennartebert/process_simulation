@@ -5,6 +5,8 @@ import numpy as np
 import networkx as nx
 import pandas as pd
 import random
+import h5py
+
 
 VERSION = 0.01
 
@@ -202,7 +204,7 @@ class ProcessSimulationModel:
             # total_occurences_in_last_r_iters = sum([len(sequence)-1 for sequence in relevant_historic_sequences])
             # if (total_occurences_in_last_r_iters != total_occurences_in_am): raise Exception("AM not in line with past occurences")
         
-        sim_result = historic_adjacency_matrices
+        sim_result = np.array(historic_adjacency_matrices)
 
         if normalize_adjacency_matrices:
             # calculate the nomarlized adjacency matrixes for report out
@@ -453,3 +455,146 @@ def get_random_walk_sequence(am, max_sequence=None):
                 sequence.append(current_activity)
 
         return sequence
+
+def save_simulation_hdf5(filename, model, activity_matrices, results):
+    """
+    Saves a simulation run to an HDF5 file with an automatically assigned unique ID.
+    - Model parameters are stored as attributes.
+    - Activity matrices are stored as a single NumPy dataset.
+    - Simulation results are stored in a separate subgroup to avoid confusion.
+
+    :param filename: HDF5 file path.
+    :param model: ProcessSimulationModel instance.
+    :param activity_matrices: NumPy array containing activity matrices.
+    :param results: Dictionary containing summarized simulation results.
+    :return: Assigned simulation ID.
+    """
+    with h5py.File(filename, "a") as f:
+        # Generate a unique ID
+        simulation_id = f"simulation_{len(f.keys()) + 1}"
+
+        # Create a group for this simulation
+        group = f.create_group(simulation_id)
+
+        # Store model parameters as attributes
+        for key, value in vars(model).items():
+            group.attrs[key] = value  
+
+        # Store the activity matrices as a dataset
+        group.create_dataset("activity_matrices", data=activity_matrices, compression="gzip")
+
+        # Create a subgroup for results
+        results_group = group.create_group("results")
+
+        # Store results in the subgroup
+        for key, value in results.items():
+            if isinstance(value, (int, float, str, bool)):  # Store simple values as attributes
+                results_group.attrs[key] = value
+            else:
+                results_group.create_dataset(key, data=np.array(value), compression="gzip")  # Store arrays as datasets
+
+    return simulation_id  # Return the generated ID
+
+def load_simulation_hdf5(filename, simulation_id):
+    """
+    Loads a specific simulation run from an HDF5 file.
+
+    :param filename: HDF5 file path.
+    :param simulation_id: Unique ID of the simulation.
+    :return: ProcessSimulationModel instance, NumPy activity matrices, and results dictionary.
+    """
+    with h5py.File(filename, "r") as f:
+        if simulation_id not in f:
+            raise ValueError(f"Simulation ID {simulation_id} not found.")
+
+        group = f[simulation_id]
+
+        # Load model parameters and reconstruct the model
+        model_kwargs = {key: group.attrs[key] for key in group.attrs}
+        model = ProcessSimulationModel(**model_kwargs)
+
+        # Load the activity matrices
+        activity_matrices = group["activity_matrices"][()]
+
+        # Load summarized results
+        results_group = group["results"]
+        results = {}
+        for key in results_group.attrs:
+            results[key] = results_group.attrs[key]  # Load simple attributes
+        for key in results_group:
+            results[key] = results_group[key][()]  # Load NumPy datasets
+
+    return model, activity_matrices, results
+
+def load_simulations_by_params(filename, **search_params):
+    """
+    Loads all simulations that match the given parameters.
+
+    :param filename: HDF5 file path.
+    :param search_params: Key-value pairs of parameters to filter by.
+    :return: List of tuples (simulation_id, ProcessSimulationModel instance, activity_matrices, results)
+    """
+    matching_simulations = []
+
+    with h5py.File(filename, "r") as f:
+        for sim_id in f.keys():
+            group = f[sim_id]
+
+            # Extract stored parameters
+            model_kwargs = {key: group.attrs[key] for key in group.attrs}
+
+            # Check if this simulation matches the given search parameters
+            if all(model_kwargs.get(key) == value for key, value in search_params.items()):
+                model = ProcessSimulationModel(**model_kwargs)
+                activity_matrices = group["activity_matrices"][()]
+
+                # Load summarized results
+                results_group = group["results"]
+                results = {}
+                for key in results_group.attrs:
+                    results[key] = results_group.attrs[key]
+                for key in results_group:
+                    results[key] = results_group[key][()]
+
+                matching_simulations.append((sim_id, model, activity_matrices, results))
+
+    return matching_simulations
+
+def create_results_dataframe(filename):
+    """
+    Creates a DataFrame where:
+    - The index consists of all model parameters.
+    - The columns contain all results (ignoring activity_matrices).
+
+    :param filename: HDF5 file path.
+    :return: Pandas DataFrame.
+    """
+    records = []
+
+    with h5py.File(filename, "r") as f:
+        for sim_id in f.keys():
+            group = f[sim_id]
+
+            # Extract model parameters
+            model_params = {key: group.attrs[key] for key in group.attrs}
+
+            # Extract summarized results
+            results_group = group["results"]
+            results = {}
+            for key in results_group.attrs:
+                results[key] = results_group.attrs[key]  # Scalars
+            for key in results_group:
+                results[key] = results_group[key][()].tolist()  # Convert arrays to lists
+
+            # Combine parameters and results
+            record = {**model_params, **results}
+            records.append(record)
+
+    # Create DataFrame
+    df = pd.DataFrame(records)
+    
+    # Set model parameters as index
+    param_keys = list(model_params.keys())
+    df.set_index(param_keys, inplace=True)
+
+    return df
