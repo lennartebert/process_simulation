@@ -1,7 +1,8 @@
 # custom files
 parking_space.ipynb
 profile_output.txt
-simulation_results.csv
+experiment_results/
+launch.json
 
 *.nb.html
 

@@ -1,19 +1,24 @@
 """Helper module for the simulation of process change.
 """
 
+import csv
+import os
 import numpy as np
 import networkx as nx
 import pandas as pd
 import random
-import h5py
 import itertools
 import yaml
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
-VERSION = 0.02
+VERSION = 0.03
+
+simulation_metrics = ['max_complexity', 'mean_complexity', 'has_phase_change', 'time_to_chaos']
 
 def sample_adjacency_matrices(ams, sample_size):
     # retrieves "sample_size" items from ams
@@ -64,7 +69,11 @@ class ProcessSimulationModel:
         self.v_a = v_a
         self.v_m_e = v_m_e
         self.v_a_e = v_a_e
-        self.seed = seed
+        # set the seed
+        if seed is None:
+            self.seed = np.random.randint(0, np.iinfo(np.int32).max)
+        else:
+            self.seed = seed
     
     # get the adjecency matrix for the the last r rows in the sequence history
     def get_adjacency_matrix(self, historic_sequences):
@@ -113,20 +122,24 @@ class ProcessSimulationModel:
             # do not vary from usual process if a random number is > variability
             elif np.random.rand() > self.get_v(current_activity, is_activity_automated, is_exception):
                 # go to the next node
-                # get possible next nodes from the am
-                next_node_occurences = am[current_activity,]
-                sum_next_node_occurences = np.sum(next_node_occurences)
-                
-                # if the sum of the next node occurences is 0, perform a random jump in the module (in accordance with Pentlands implementation)
-                if sum_next_node_occurences == 0:
-                    current_module = activity_modules[current_activity]
-                    next_activity = random.choice(module_activities[current_module])
-                # else, select the next node per weighted jump
+                # if the current activity is automated, always go to the next activity (jumps due to exceptions are covered in outer if)
+                if is_activity_automated[current_activity]:
+                    next_activity = current_activity + 1
                 else:
-                    # custom implementation of random.choice to pick next activity based on non-normalized values
-                    cumulative_occurences = np.cumsum(next_node_occurences)
-                    random_value = np.random.rand() * sum_next_node_occurences
-                    next_activity = np.searchsorted(cumulative_occurences, random_value)
+                    # get possible next nodes from the am
+                    next_node_occurences = am[current_activity,]
+                    sum_next_node_occurences = np.sum(next_node_occurences)
+                    
+                    # if the sum of the next node occurences is 0, perform a random jump in the module (in accordance with Pentlands implementation)
+                    if sum_next_node_occurences == 0:
+                        current_module = activity_modules[current_activity]
+                        next_activity = random.choice(module_activities[current_module])
+                    # else, select the next node per weighted jump
+                    else:
+                        # custom implementation of random.choice to pick next activity based on non-normalized values
+                        cumulative_occurences = np.cumsum(next_node_occurences)
+                        random_value = np.random.rand() * sum_next_node_occurences
+                        next_activity = np.searchsorted(cumulative_occurences, random_value)
 
             # otherwise, put in a variation within the module
             else:
@@ -139,10 +152,9 @@ class ProcessSimulationModel:
         return sequence
     
     def run_simulation(self, normalize_adjacency_matrices=True):
-        # set the seed at each simulation run for reproducability
-        if self.seed is not None:
-            np.random.seed(self.seed)
-            random.seed(self.seed)
+        # reset the seed at each simulation run for reproducability
+        np.random.seed(self.seed)
+        random.seed(self.seed)
 
         # simulate each time step
         historic_adjacency_matrices = []
@@ -308,7 +320,6 @@ def summarize_am(adjacency_matrix, metrics=['number of connected nodes', 'number
         cyclicity = len(nodes_on_cycle) / number_of_connected_nodes
         result['cyclicity'] = cyclicity
 
-    
     # depth
     if 'depth' in metrics:
         depth = len(nx.algorithms.shortest_paths.generic.shortest_path(graph, source=min(list(graph)), target=max(list(graph))))
@@ -373,9 +384,10 @@ def summarize_am(adjacency_matrix, metrics=['number of connected nodes', 'number
         
     return result
 
-def get_aggregate_sim_result(adjacency_matrices, l):
+def get_aggregate_sim_result(adjacency_matrices):
     complexities = []
     max_complexity = None
+    l = adjacency_matrices[0].shape[0]
 
     # estimate complexity based on edge counts
     for adjacency_matrix in adjacency_matrices:
@@ -468,177 +480,39 @@ def get_random_walk_sequence(am, max_sequence=None):
 
         return sequence
 
-def save_simulation_hdf5_to_open_file(f, model, results, computation_time):
-    """
-    Saves a simulation run to an HDF5 file with an automatically assigned unique ID.
-    - Model parameters are stored as attributes.
-    - Simulation results are stored in a separate subgroup to avoid confusion.
+def get_heatmap_plot(adjacency_matrices, num_columns=3, num_rows=5, title='Adjacency matrices at different iterations'):
+    sampled_adjacency_matrices = sample_adjacency_matrices(adjacency_matrices, num_columns*num_rows)
 
-    :param f: Open HDF5 file.
-    :param model: ProcessSimulationModel instance.
-    :param results: Dictionary containing summarized simulation results.
-    :return: Assigned simulation ID.
-    """
-    # Generate a unique ID
-    simulation_id = f"simulation_{len(f.keys()) + 1}"
+    # Create a grid of subplots
+    fig, axes = plt.subplots(num_rows, num_columns, figsize=(num_columns * 3, num_rows * 3))
 
-    # Create a group for this simulation
-    group = f.create_group(simulation_id)
+    # Flatten the axes array for easy indexing
+    axes = axes.flatten()
 
-    # Store model parameters as attributes
-    for key, value in vars(model).items():
-        group.attrs[key] = value
+    # Plot each adjacency matrix in its respective subplot
+    for idx, (i, adjacency_matrix) in enumerate(sampled_adjacency_matrices.items()):
+        axes[idx].matshow(adjacency_matrix)
+        axes[idx].set_title(f"t={i}")
 
-    # store the version of the simulation
-    group.attrs['version'] = VERSION
+    # Hide any unused subplots
+    for j in range(idx + 1, len(axes)):
+        fig.delaxes(axes[j])
 
-    # Create a subgroup for results
-    results_group = group.create_group("results")
+    # Adjust layout
+    plt.tight_layout(rect=[0, 0, 1, 0.95]) # add some space at the top
 
-    # Store results in the subgroup
-    for key, value in results.items():
-        results_group.attrs[key] = value
-
-    # Create a subgroup for results
-    compute_info_group = group.create_group("compute_info")
-    compute_info_group.attrs['computation_time'] = computation_time
-    compute_info_group.attrs['time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-
-    return simulation_id  # Return the generated ID
-
-def save_simulation_hdf5(filename, model, results, computation_time):
-    """
-    Saves a simulation run to an HDF5 file with an automatically assigned unique ID.
-    - Model parameters are stored as attributes.
-    - Simulation results are stored in a separate subgroup to avoid confusion.
-
-    :param filename: HDF5 file path.
-    :param model: ProcessSimulationModel instance.
-    :param results: Dictionary containing summarized simulation results.
-    :return: Assigned simulation ID.
-    """
-    with h5py.File(filename, "a") as f:
-        simulation_id = save_simulation_hdf5_to_open_file(f, model, results, computation_time)
-
-    return simulation_id  # Return the generated ID
-
-def load_simulation_hdf5(filename, simulation_id):
-    """
-    Loads a specific simulation run from an HDF5 file.
-
-    :param filename: HDF5 file path.
-    :param simulation_id: Unique ID of the simulation.
-    :return: ProcessSimulationModel instance, NumPy activity matrices, and results dictionary.
-    """
-    with h5py.File(filename, "r") as f:
-        if simulation_id not in f:
-            raise ValueError(f"Simulation ID {simulation_id} not found.")
-
-        group = f[simulation_id]
-
-        # Load model parameters and reconstruct the model
-        model_kwargs = {key: group.attrs[key] for key in group.attrs}
-
-        # remove version from model_kwargs
-        model_kwargs.pop('version')
-
-        model = ProcessSimulationModel(**model_kwargs)
-
-        # Load summarized results
-        results_group = group["results"]
-        results = {}
-        for key in results_group.attrs:
-            results[key] = results_group.attrs[key]  # Load simple attributes
-        for key in results_group:
-            results[key] = results_group[key][()]  # Load NumPy datasets
-
-        # Load summarized results
-        compute_info_group = group["compute_info"]
-        compute_info = {}
-        for key in compute_info_group.attrs:
-            compute_info[key] = compute_info_group.attrs[key]  # Load simple attributes
-        for key in compute_info_group:
-            compute_info[key] = compute_info_group[key][()]  # Load NumPy datasets
-   
-    return model, results, compute_info
-
-def load_simulations_by_params(filename, **search_params):
-    """
-    Loads all simulations that match the given parameters.
-
-    :param filename: HDF5 file path.
-    :param search_params: Key-value pairs of parameters to filter by.
-    :return: List of tuples (simulation_id, ProcessSimulationModel instance, results)
-    """
-    matching_simulations = []
-
-    with h5py.File(filename, "r") as f:
-        for sim_id in f.keys():
-            group = f[sim_id]
-
-            # Extract stored parameters
-            model_kwargs = {key: group.attrs[key] for key in group.attrs}
-            
-            # remove version from model_kwargs
-            model_kwargs.pop('version')
-
-            # Check if this simulation matches the given search parameters
-            if all(model_kwargs.get(key) == value for key, value in search_params.items()):
-
-                model = ProcessSimulationModel(**model_kwargs)
-                
-                # Load summarized results
-                results_group = group["results"]
-                results = {}
-                for key in results_group.attrs:
-                    results[key] = results_group.attrs[key]
-                for key in results_group:
-                    results[key] = results_group[key][()]
-
-                matching_simulations.append((sim_id, model, results))
-
-    return matching_simulations
-
-def create_results_dataframe(filename):
-    """
-    Creates a DataFrame where:
-    - The index consists of all model parameters.
-    - The columns contain all results
-
-    :param filename: HDF5 file path.
-    :return: Pandas DataFrame.
-    """
-    records = []
-    model_params = None
-
-    with h5py.File(filename, "r") as f:
-        for sim_id in f.keys():
-            group = f[sim_id]
-
-            # Extract model parameters
-            model_params = {key: group.attrs[key] for key in group.attrs}
-            model_params['sim_id'] = sim_id
-
-            # Extract summarized results
-            results_group = group["results"]
-            results = {}
-            for key in results_group.attrs:
-                results[key] = results_group.attrs[key]  # Scalars
-            for key in results_group:
-                results[key] = results_group[key][()].tolist()  # Convert arrays to lists
-
-            # Combine parameters and results
-            record = {**model_params, **results}
-            records.append(record)
-
-    # Create DataFrame
-    df = pd.DataFrame(records)
+    # Show the title if one is given
+    if title is not None:
+        plt.subplots_adjust(hspace=0.7) 
+        fig.suptitle(title, fontsize=16)
     
-    # Set model parameters as index
-    param_keys = list(model_params.keys())
-    df.set_index(param_keys, inplace=True)
+    return plt
 
-    return df
+def get_results_dataframe(csv_results_path):
+    # Read the CSV file
+    results_df = pd.read_csv(csv_results_path)
+
+    return results_df
 
 def run_simulation_and_get_results(sim_params):
     # Time the simulation
@@ -650,21 +524,22 @@ def run_simulation_and_get_results(sim_params):
     adjacency_matrices = my_simulation.run_simulation()
 
     # Get aggregate simulation result
-    simulation_result = get_aggregate_sim_result(adjacency_matrices, my_simulation.l)
+    simulation_result = get_aggregate_sim_result(adjacency_matrices)
     
     end_time = time.time()
 
     computation_time = end_time - start_time
-    return my_simulation, adjacency_matrices, simulation_result, computation_time
+    return my_simulation, simulation_result, computation_time
 
-def run_simulations_to_hdf5(simulation_settings, filename="results.h5"):
+def run_simulations_to_csv(simulation_settings, output_file_name, random_order=False):
     """
-    Runs simulations in parallel and writes each result immediately to an HDF5 file.
+    Runs simulations in parallel and writes each result immediately to a csv file
     This prevents accumulating all results in memory.
     """
-    
-    # Generate parameter sets
 
+    print("Initializing simulation")
+
+    # Generate parameter sets
     simulation_runs = simulation_settings['simulation_runs']  # Number of times each combination should appear
     params = simulation_settings['params']
 
@@ -674,26 +549,43 @@ def run_simulations_to_hdf5(simulation_settings, filename="results.h5"):
         for _ in range(simulation_runs)
     ]
 
+    # if random_order is passed to function, randomly shuffle params_list
+    if random_order:
+        random.shuffle(params_list)
+
     # Total number of simulations, used for progress tracking
     total_simulations = len(params_list)
     total_simulations_str = str(total_simulations)
 
-
-    print("Starting simulation")
     start_time = time.time()
 
-    with h5py.File(filename, "w") as h5file:
+    # Check if the file exists to determine if we need to write the header
+    file_exists = os.path.isfile(output_file_name)
+
+    with open(output_file_name, "a", newline='') as csvfile:
+        fieldnames = list(params.keys()) + ['seed', 'computation_time', 'version'] + simulation_metrics
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        # Write the header only if the file does not exist
+        if not file_exists:
+            writer.writeheader()
+
         with ProcessPoolExecutor() as executor:
             futures = {executor.submit(run_simulation_and_get_results, params): params for params in params_list}
             for future in as_completed(futures):
-                my_simulation, adjacency_matrices, simulation_result, computation_time = future.result()
+                my_simulation, simulation_result, computation_time = future.result()
 
-                # Save the simulation results to the HDF5 file
-                save_simulation_hdf5_to_open_file(h5file, my_simulation, adjacency_matrices, simulation_result, computation_time)
+                # Prepare the row to write to CSV
+                row = {**vars(my_simulation), **simulation_result}
+                row['computation_time'] = computation_time
+                row['version'] = VERSION
+
+                # Write the row to the CSV file
+                writer.writerow(row)
 
                 # Update progress bar
                 elapsed_time = time.time() - start_time
-                simulations_performed = len(h5file.keys())
+                simulations_performed = len(futures) - len([f for f in futures if not f.done()])
                 percent_progress = simulations_performed / total_simulations
 
                 remaining_time = elapsed_time / percent_progress - elapsed_time
@@ -701,37 +593,41 @@ def run_simulations_to_hdf5(simulation_settings, filename="results.h5"):
                 remaining_time_str = time.strftime("%H:%M:%S", remaining_time_struct)
                 simulations_performed_str = str(simulations_performed).zfill(len(total_simulations_str))
                 if percent_progress < 1:
-                    print(f"Progress: {percent_progress:2.1%} | Simulations: {simulations_performed_str}/{total_simulations_str} | Estimated remaining time: {remaining_time_str}", end="\r")
+                    print(f"Progress: {percent_progress:2.1%} | Simulations: {simulations_performed_str}/{total_simulations_str} | Estimated remaining time: {remaining_time_str}", end="\r", flush=True)
                 else:
                     # clear line
                     print(" " * 200, end="\r")
                     print(f"Progress: {percent_progress:2.1%} | Simulations: {simulations_performed_str}/{total_simulations_str} | Elapsed time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
 
-def main(simulation_settings, filename="results.h5"):
+def main(simulation_settings, output_file_name, random_order):
     """
     Main function that accepts the simulation settings and runs the simulations.
     """
-
-    run_simulations_to_hdf5(simulation_settings, filename)
-    print(f"All simulations complete and results saved to {filename}")
+    
+    run_simulations_to_csv(simulation_settings, output_file_name, random_order)
 
 if __name__ == "__main__":
     # Set up command-line argument parsing.
     parser = argparse.ArgumentParser(
-        description="Run simulations in parallel and save results to an HDF5 file."
+        description="Run simulations in parallel and save results to a CSV file."
     )
     parser.add_argument(
         "--settings", type=str, required=True,
         help="Path to a YAML file containing the simulation settings."
     )
     parser.add_argument(
-        "--output", type=str, default="results.h5",
-        help="Output HDF5 file name (default: results.h5)."
+        "--output", type=str, default="experiment_results/results.csv",
+        help="Output CSV file name (default: results.csv)."
     )
+    parser.add_argument(
+        "--random_order", action="store_true",
+        help="If set, performs the simulation in random instead of sequential order."
+    )
+
     args = parser.parse_args()
 
     # Load parameter sets from the provided JSON file.
     with open(args.settings, "r") as f:
         simulation_settings = yaml.safe_load(f)
 
-    main(simulation_settings, args.output)
+    main(simulation_settings, args.output, args.random_order)
