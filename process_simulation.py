@@ -14,9 +14,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
+import math
 
 
-VERSION = 0.03
+VERSION = 0.04
 
 simulation_metrics = ['max_complexity', 'mean_complexity', 'has_phase_change', 'time_to_chaos']
 
@@ -100,11 +101,11 @@ class ProcessSimulationModel:
 
         return norm_am
 
-    def get_v(self, activitiy, is_activity_automated, is_exception):
-        if (is_activity_automated[activitiy]) and (is_exception): return self.v_a_e
-        elif (is_activity_automated[activitiy]) and (not is_exception): return self.v_a
-        elif (not is_activity_automated[activitiy]) and (is_exception): return self.v_m_e
-        elif (not is_activity_automated[activitiy]) and (not is_exception): return self.v_m
+    def get_v(self, activity, is_activity_automated, is_exception):
+        if (is_activity_automated[activity]) and (is_exception): return self.v_a_e
+        elif (is_activity_automated[activity]) and (not is_exception): return self.v_a
+        elif (not is_activity_automated[activity]) and (is_exception): return self.v_m_e
+        elif (not is_activity_automated[activity]) and (not is_exception): return self.v_m
 
     def next_sequence(self, am, global_source, global_sink, module_sinks, activity_modules, module_activities, is_activity_automated):
         """ Perform another iteration of the simulation. Return the sequence.
@@ -165,7 +166,7 @@ class ProcessSimulationModel:
         global_source = 0
         global_sink = self.l - 1
 
-        module_sinks = [int(self.l / self.m * sink) - 1 for sink in range(1, self.m+1)]
+        module_sinks = [math.ceil(self.l / self.m * sink) - 1 for sink in range(1, self.m+1)]
         # create a dictionary that maps each activity to a module
         activity_modules = {activity: module_sinks[int(self.m * activity / self.l)] for activity in range(0, self.l)}
         # create a dictionary that has all activities of a specific module
@@ -531,7 +532,22 @@ def run_simulation_and_get_results(sim_params):
     computation_time = end_time - start_time
     return my_simulation, simulation_result, computation_time
 
-def run_simulations_to_csv(simulation_settings, output_file_name, random_order=False):
+def aggregate_results(df):
+    # aggregate results with same parameters
+    grouped_df = df.groupby(['t', 'l', 'm', 'r', 'n', 'v_m', 'v_a', 'v_m_e', 'v_a_e', 'a', 'e'])
+
+    aggregated_df = grouped_df.agg({
+        'seed': 'count',
+        'max_complexity': ['mean', 'median', 'max', 'std'],
+        'mean_complexity': ['mean', 'median', 'max', 'std'],
+        'has_phase_change': ['mean', 'median', 'max', 'std'],
+        'time_to_chaos': ['mean', 'median', 'max', 'std']
+    }).rename(columns={'seed': 'simulation_runs'})
+
+    aggregated_df.rename(columns={'sim_id': 'simulation_runs'}, inplace=True)
+    return aggregated_df
+
+def run_simulations_to_csv(simulation_settings, output_file_name, random_order=False, sensitivity_analysis=False, fill=False):
     """
     Runs simulations in parallel and writes each result immediately to a csv file
     This prevents accumulating all results in memory.
@@ -539,23 +555,79 @@ def run_simulations_to_csv(simulation_settings, output_file_name, random_order=F
 
     print("Initializing simulation")
 
-    # Generate parameter sets
-    simulation_runs = simulation_settings['simulation_runs']  # Number of times each combination should appear
-    params = simulation_settings['params']
+    print("Generating simulation parameters from settings")
 
-    params_list = [
-        dict(zip(params.keys(), values))
-        for values in itertools.product(*params.values())
-        for _ in range(simulation_runs)
-    ]
+    # Generate parameter sets
+    unique_params_list = None
+    if not sensitivity_analysis:
+        params = simulation_settings['params']
+
+        unique_params_list = [
+            dict(zip(params.keys(), values))
+            for values in itertools.product(*params.values())
+        ]
+
+    else:
+        fixed_params = simulation_settings['sensitivity_fixed_params']
+        varying_params = simulation_settings['sensitivity_varying_params']
+
+        unique_params_list = []
+
+        # add the fixed parameters to the unique params list to have a benchmark
+        unique_params_list.extend([
+            dict(zip(fixed_params.keys(), values))
+            for values in itertools.product(*fixed_params.values())
+        ])
+
+        # add the variations
+
+        for param, values in varying_params.items():
+            for value in values:
+                params = fixed_params.copy()
+                params[param] = [value]
+               
+                unique_params_list.extend([
+                    dict(zip(params.keys(), values))
+                    for values in itertools.product(*params.values())
+                ])
+    
+    default_simulation_runs = simulation_settings['simulation_runs']
+
+    # multiply parameter set for number of simulations
+    expanded_params_list = []
+    if fill:
+        # get previously run simulations if fill was set
+        print("Loading previous results to find missing simulation runs")
+        existing_results_df = get_results_dataframe(output_file_name)
+        aggregated_existing_results_df = aggregate_results(existing_results_df)
+        print("Loading completed")
+
+        for params in unique_params_list:
+            param_values = (params.values())
+
+            # Get the simulation_runs count for the specified index
+            simulation_runs_count = 0
+            try:
+                simulation_runs_count = aggregated_existing_results_df.loc[tuple(param_values), ('simulation_runs', 'count')]
+            except KeyError:
+                simulation_runs_count = 0
+            
+            simulation_runs = max(0, default_simulation_runs - simulation_runs_count)
+            expanded_params_list.extend([params for _ in range(simulation_runs)])
+    else:
+        expanded_params_list = [param for param in unique_params_list for _ in range(default_simulation_runs)]
+
+    print("Simulation parameters generated")
 
     # if random_order is passed to function, randomly shuffle params_list
     if random_order:
-        random.shuffle(params_list)
+        random.shuffle(expanded_params_list)
 
     # Total number of simulations, used for progress tracking
-    total_simulations = len(params_list)
+    total_simulations = len(expanded_params_list)
     total_simulations_str = str(total_simulations)
+
+    print(f"Total number of simulations: {total_simulations_str}")
 
     start_time = time.time()
 
@@ -569,9 +641,11 @@ def run_simulations_to_csv(simulation_settings, output_file_name, random_order=F
         # Write the header only if the file does not exist
         if not file_exists:
             writer.writeheader()
+        
+        print(f"Starting {total_simulations_str} simulations")
 
         with ProcessPoolExecutor() as executor:
-            futures = {executor.submit(run_simulation_and_get_results, params): params for params in params_list}
+            futures = {executor.submit(run_simulation_and_get_results, params): params for params in expanded_params_list}
             for future in as_completed(futures):
                 my_simulation, simulation_result, computation_time = future.result()
 
@@ -599,12 +673,17 @@ def run_simulations_to_csv(simulation_settings, output_file_name, random_order=F
                     print(" " * 200, end="\r")
                     print(f"Progress: {percent_progress:2.1%} | Simulations: {simulations_performed_str}/{total_simulations_str} | Elapsed time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_time))}")
 
-def main(simulation_settings, output_file_name, random_order):
+def main(simulation_settings_path, output_file_name, random_order, sensitivity_analysis, fill):
     """
-    Main function that accepts the simulation settings and runs the simulations.
+    Main function that accepts the simulation settings path and runs the simulations.
     """
     
-    run_simulations_to_csv(simulation_settings, output_file_name, random_order)
+    # Load parameter sets from the provided JSON file.
+    simulation_settings = None
+    with open(simulation_settings_path, "r") as f:
+        simulation_settings = yaml.safe_load(f)
+
+    run_simulations_to_csv(simulation_settings, output_file_name, random_order, sensitivity_analysis, fill)
 
 if __name__ == "__main__":
     # Set up command-line argument parsing.
@@ -623,11 +702,16 @@ if __name__ == "__main__":
         "--random_order", action="store_true",
         help="If set, performs the simulation in random instead of sequential order."
     )
+    parser.add_argument(
+        "--sensitivity_analysis", action="store_true",
+        help="If set, performs a sensitivity analysis."
+    )
+    parser.add_argument(
+        "--fill", action="store_true",
+        help="If set, first reads the results file at output path and then completes missing simulations."
+    )
+    
 
     args = parser.parse_args()
 
-    # Load parameter sets from the provided JSON file.
-    with open(args.settings, "r") as f:
-        simulation_settings = yaml.safe_load(f)
-
-    main(simulation_settings, args.output, args.random_order)
+    main(args.settings, args.output, args.random_order, args.sensitivity_analysis, args.fill)
