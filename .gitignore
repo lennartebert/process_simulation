@@ -1,7 +1,8 @@
 # custom files
-parking_space.ipynb
+_archive/
 profile_output.txt
 experiment_results/
+local_results/
 launch.json
 
 *.nb.html
@@ -163,3 +164,5 @@ cython_debug/
 .DS_Store
 results.h5
 .vscode/launch.json
+
+.vscode/

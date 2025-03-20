@@ -43,7 +43,7 @@ The simulation model is defined in the [`process_simulation.py`](process_simulat
         ```
         Example:
         ```sh
-        python process_simulation.py --settings simulation_settings.yml --output experiment_results/experiment_output.csv --random_order --fill
+        python process_simulation.py --settings simulation_settings.yml --output local_results/experiment_output.csv --random_order
         ```
     2. **Option 2: Run by executing the `Run mass simulation.ipynb` notebook.**
     3. **Option 3: Run from your own script by importing the `process_simulation` module.** Refer to [`Impact of Process Automation on Process Change Dynamics.ipynb`](Impact%20of%20Process%20Automation%20on%20Process%20Change%20Dynamics.ipynb) for how to use the module.
