@@ -7,7 +7,7 @@ params:
     - 5
   r:
     - 50
-  'n':
+  n:
     - 5
   v_m:
     - 0.005
@@ -45,7 +45,7 @@ sensitivity_fixed_params:
     - 5
   r:
     - 50
-  'n':
+  n:
     - 5
   v_m:
     - 0.005
@@ -74,7 +74,7 @@ sensitivity_varying_params:
   r:
     - 45
     - 55
-  'n':
+  n:
     - 4
     - 6
   v_m:
