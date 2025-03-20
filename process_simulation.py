@@ -579,6 +579,7 @@ def get_heatmap_plot(
     num_columns=3,
     num_rows=5,
     title="Adjacency matrices at different iterations",
+    cmap='gray'
 ):
     sampled_adjacency_matrices = sample_adjacency_matrices(
         adjacency_matrices, num_columns * num_rows
@@ -594,7 +595,7 @@ def get_heatmap_plot(
 
     # Plot each adjacency matrix in its respective subplot
     for idx, (i, adjacency_matrix) in enumerate(sampled_adjacency_matrices.items()):
-        axes[idx].matshow(adjacency_matrix)
+        axes[idx].matshow(adjacency_matrix, cmap=cmap)
         axes[idx].set_title(f"t={i}")
 
     # Hide any unused subplots
